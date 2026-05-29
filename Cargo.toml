@@ -1,0 +1,7 @@
+[package]
+name = "dftobin"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+parquet = { version = "57", default-features = false, features = ["snap", "zstd"] }

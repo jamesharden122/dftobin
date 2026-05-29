@@ -1,0 +1,27 @@
+# Rust build output
+/target/
+
+# Local editor and tool state
+/.vscode/
+/.idea/
+*.swp
+*.swo
+*~
+
+# Local environment files
+.env
+.env.*
+!.env.example
+
+# Generated data outputs
+/data/
+/out/
+/output/
+*.bin
+*.parquet
+*.csv
+
+# Logs and temporary files
+*.log
+*.tmp
+*.bak
