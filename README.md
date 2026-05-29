@@ -26,10 +26,53 @@ Examples:
 - `prices.parquet` -> `./prices/close_DOUBLE.bin`
 - `prices.parquet` with `output_dir=./data` -> `./data/prices/close_DOUBLE.bin`
 
+## Install and PATH setup
+
+From the `dftobin` repo root, install the CLI into Cargo's binary directory:
+
+```text
+cd ~/Dropbox/Desktop/tesero-sol/software_development/trading/dftobin
+cargo install --path . --force
+```
+
+This installs the command at:
+
+```text
+~/.cargo/bin/dftobin
+```
+
+For the current terminal session, add Cargo binaries to `PATH`:
+
+```text
+export PATH="$HOME/.cargo/bin:$PATH"
+```
+
+To make that permanent for future terminals, add the export to your shell profile:
+
+```text
+printf '\nexport PATH="$HOME/.cargo/bin:$PATH"\n' >> ~/.bashrc
+source ~/.bashrc
+```
+
+Verify the command is available:
+
+```text
+which dftobin
+dftobin --help
+```
+
+Optional: export a direct command variable for scripts or one-off shell use:
+
+```text
+export DFTOBIN="$HOME/.cargo/bin/dftobin"
+"$DFTOBIN" <input.parquet> [output_dir]
+```
+
 ## CLI usage
 
 ```text
 cargo run -- <input.parquet> [output_dir]
+dftobin <input.parquet> [output_dir]
 ```
 
 Examples:
@@ -37,6 +80,8 @@ Examples:
 ```text
 cargo run -- ./data/prices.parquet
 cargo run -- ./data/prices.parquet ./out
+dftobin ./data/prices.parquet
+dftobin ./data/prices.parquet ./out
 ```
 
 If `output_dir` is omitted, output is written under the current directory.
@@ -95,4 +140,3 @@ Test:
 ```text
 cargo test
 ```
-
