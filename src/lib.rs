@@ -15,6 +15,7 @@ use std::{
     path::PathBuf,
 };
 
+/// Error type shared by the library API and the CLI.
 #[derive(Debug)]
 pub enum Error {
     Io(io::Error),
@@ -38,8 +39,14 @@ pub enum Error {
     EmptyFile,
 }
 
+/// Crate-local result alias so callers can use one error surface.
 pub type Result<T> = std::result::Result<T, Error>;
 
+/// In-memory representation of a Parquet file ready to be written as column bins.
+///
+/// The converter currently materializes rows up front. That keeps the per-column
+/// write pass simple, because each output file can be produced by scanning the
+/// same row buffer for one schema column at a time.
 #[derive(Debug)]
 pub struct DftoBin {
     pub file: File,
@@ -49,6 +56,7 @@ pub struct DftoBin {
 }
 
 impl DftoBin {
+    /// Open a Parquet file, capture its metadata, and load all rows into memory.
     pub fn new(file_name: &str) -> Result<Self> {
         let file = File::open(file_name)?;
         let reader = SerializedFileReader::new(file.try_clone()?)?;
@@ -56,9 +64,13 @@ impl DftoBin {
         let metadata = reader.metadata().to_owned();
         let iter = reader.get_row_iter(None)?;
         let mut data: Vec<Row> = Vec::new();
+
+        // Row materialization makes later column-wise output deterministic and
+        // avoids reopening the Parquet reader once per column.
         for row_result in iter {
             data.push(row_result?);
         }
+
         let df_to_bin = Self {
             file,
             file_name: file_name.to_owned(),
@@ -68,10 +80,12 @@ impl DftoBin {
         Ok(df_to_bin)
     }
 
+    /// Write output under the current directory.
     pub fn to_bin(&self) -> Result<()> {
         self.to_bin_at(".")
     }
 
+    /// Write one `.bin` file per Parquet schema column under `output_root/<input_stem>/`.
     pub fn to_bin_at(&self, output_root: impl Into<PathBuf>) -> Result<()> {
         let schema = self.metadata.file_metadata().schema_descr();
         let output_leaf: PathBuf = PathBuf::from(&self.file_name)
@@ -84,12 +98,17 @@ impl DftoBin {
         for i in 0..schema.num_columns() {
             let col = schema.column(i);
             let column_name = col.name();
+
+            // The physical type is embedded in the file name so downstream
+            // readers can choose the correct fixed-width decoder.
             let file = File::create(
                 output_dir.join(format!("{column_name}_{}.bin", col.physical_type())),
             )?;
             let mut writer = BufWriter::new(file);
 
             for row in &self.data {
+                // Parquet row fields should match the schema order; a mismatch
+                // means the input cannot be safely decoded by ordinal position.
                 let Some((_name, field)) = row.get_column_iter().nth(i) else {
                     return Err(Error::Schema(format!(
                         "row has fewer fields than schema; missing column index {i} ({column_name})"
@@ -112,6 +131,8 @@ fn write_field_be<W: Write>(
     physical_type: PhysicalType,
     field: &Field,
 ) -> Result<()> {
+    // Fixed-width values are written in big-endian order to make the binary
+    // format explicit and stable across platforms.
     match field {
         Field::Null => write_null_be(writer, physical_type)?,
         Field::Bool(value) => writer.write_all(&[u8::from(*value)])?,
@@ -135,6 +156,8 @@ fn write_field_be<W: Write>(
         Field::TimestampMillis(value) => writer.write_all(&value.to_be_bytes())?,
         Field::TimestampMicros(value) => writer.write_all(&value.to_be_bytes())?,
         Field::Group(_) | Field::ListInternal(_) | Field::MapInternal(_) => {
+            // Nested Parquet values need an explicit schema-aware layout, so the
+            // flat binary writer rejects them instead of guessing.
             return Err(Error::InvalidColumnType {
                 column: column.to_owned(),
                 expected: "flat primitive parquet column",
@@ -147,6 +170,8 @@ fn write_field_be<W: Write>(
 }
 
 fn write_null_be<W: Write>(writer: &mut W, physical_type: PhysicalType) -> Result<()> {
+    // Nulls are represented with type-specific sentinels so column lengths stay
+    // aligned with row counts even when source data has missing values.
     match physical_type {
         PhysicalType::BOOLEAN => writer.write_all(&[0])?,
         PhysicalType::INT32 => writer.write_all(&i32::MIN.to_be_bytes())?,
@@ -167,6 +192,8 @@ fn write_byte_array<W: Write>(writer: &mut W, value: &ByteArray) -> Result<()> {
 }
 
 fn write_len_prefixed_bytes<W: Write>(writer: &mut W, bytes: &[u8]) -> Result<()> {
+    // Variable-width values use an explicit length prefix so adjacent rows can
+    // be decoded from a single column file without a sidecar offset table.
     writer.write_all(&(bytes.len() as u64).to_be_bytes())?;
     writer.write_all(bytes)?;
     Ok(())
