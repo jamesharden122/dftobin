@@ -31,7 +31,7 @@ Examples:
 From the `dftobin` repo root, install the CLI into Cargo's binary directory:
 
 ```text
-cd ~/Dropbox/Desktop/tesero-sol/software_development/trading/dftobin
+cd /path/to/dftobin
 cargo install --path . --force
 ```
 
